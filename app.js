@@ -38,14 +38,39 @@
   resize();
   window.addEventListener('resize', resize);
 
+  // ── Theme system ─────────────────────────────────────────────────
+  const THEMES = {
+    DEFAULT: {
+      name: 'Default',
+      background: { r: 5, g: 5, b: 15 },
+      fadeAlpha: 0.08,
+      depthRange: {
+        speed:   { min: 0.3, max: 2.0 },
+        size:    { min: 8,   max: 20 },
+        brightness: { min: 0.15, max: 1.0 },
+        glow:    { min: 0,   max: 0.6 },
+        trail:   { min: 0,   max: 15 },
+      },
+      colorStops: [
+        { threshold: 0.7, color: { r: 255, g: 255, b: 248 } },
+        { threshold: 0.4, color: { r: 180, g: 210, b: 255 } },
+        { threshold: 0,   color: { r: 100, g: 140, b: 180 } },
+      ],
+      glowBlur: { head: 10, trail: 8 },
+    },
+  };
+
+  let currentTheme = THEMES.DEFAULT;
+
   // ── Depth-based config ───────────────────────────────────────────
-  function depthConfig(d) {
+  function depthConfig(d, theme) {
+    const r = theme.depthRange;
     return {
-      speed: 0.3 + d * 1.7,
-      size: 8 + d * 12,
-      brightness: 0.15 + d * 0.85,
-      glow: d * 0.6,
-      trail: Math.floor(d * 15),
+      speed: r.speed.min + d * (r.speed.max - r.speed.min),
+      size: r.size.min + d * (r.size.max - r.size.min),
+      brightness: r.brightness.min + d * (r.brightness.max - r.brightness.min),
+      glow: r.glow.min + d * (r.glow.max - r.glow.min),
+      trail: Math.floor(r.trail.min + d * (r.trail.max - r.trail.min)),
     };
   }
 
@@ -71,14 +96,14 @@
   }
 
   // ── Color palette ────────────────────────────────────────────────
-  function dropColor(d, alpha) {
-    if (d > 0.7) {
-      return `rgba(255, 255, 248, ${alpha})`;
-    } else if (d > 0.4) {
-      return `rgba(180, 210, 255, ${alpha})`;
-    } else {
-      return `rgba(100, 140, 180, ${alpha})`;
+  function dropColor(d, alpha, theme) {
+    for (const stop of theme.colorStops) {
+      if (d > stop.threshold) {
+        return `rgba(${stop.color.r}, ${stop.color.g}, ${stop.color.b}, ${alpha})`;
+      }
     }
+    const last = theme.colorStops[theme.colorStops.length - 1].color;
+    return `rgba(${last.r}, ${last.g}, ${last.b}, ${alpha})`;
   }
 
   // ── Render loop ──────────────────────────────────────────────────
@@ -88,12 +113,12 @@
     frame++;
 
     // Fade background
-    ctx.fillStyle = 'rgba(5, 5, 15, 0.08)';
+    ctx.fillStyle = `rgba(${currentTheme.background.r}, ${currentTheme.background.g}, ${currentTheme.background.b}, ${currentTheme.fadeAlpha})`;
     ctx.fillRect(0, 0, W, H);
 
     for (let i = 0; i < cols; i++) {
       const d = depths[i];
-      const cfg = depthConfig(d);
+      const cfg = depthConfig(d, currentTheme);
 
       drops[i] += cfg.speed;
 
@@ -110,12 +135,12 @@
 
         const trailAlpha = (1 - j / cfg.trail) * cfg.brightness * 0.6;
         ctx.font = `${cfg.size}px "Noto Sans JP", "Hiragino Kaku Gothic Pro", "Yu Gothic", sans-serif`;
-        ctx.fillStyle = dropColor(d, trailAlpha);
+        ctx.fillStyle = dropColor(d, trailAlpha, currentTheme);
 
         if (j === 1) {
           if (cfg.glow > 0.1) {
-            ctx.shadowColor = dropColor(d, cfg.glow);
-            ctx.shadowBlur = 8 * cfg.glow;
+            ctx.shadowColor = dropColor(d, cfg.glow, currentTheme);
+            ctx.shadowBlur = currentTheme.glowBlur.trail * cfg.glow;
           }
           ctx.fillText(pickChar(d), i * 16, y);
           ctx.shadowBlur = 0;
@@ -127,9 +152,9 @@
       // Draw head
       const headAlpha = cfg.brightness;
       ctx.font = `${cfg.size}px "Noto Sans JP", "Hiragino Kaku Gothic Pro", "Yu Gothic", sans-serif`;
-      ctx.shadowColor = dropColor(d, cfg.glow);
-      ctx.shadowBlur = 10 * cfg.glow;
-      ctx.fillStyle = dropColor(d, headAlpha);
+      ctx.shadowColor = dropColor(d, cfg.glow, currentTheme);
+      ctx.shadowBlur = currentTheme.glowBlur.head * cfg.glow;
+      ctx.fillStyle = dropColor(d, headAlpha, currentTheme);
       ctx.fillText(pickChar(d), i * 16, drops[i]);
       ctx.shadowBlur = 0;
 
