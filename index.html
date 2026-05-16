@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
+<title>norman-rain</title>
+<style>
+  *, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0a0a0a;
+    font-family: "Hiragino Kaku Gothic Pro", "Yu Gothic", "Meiryo", "Noto Sans JP",
+                 "Noto Sans KR", "Noto Sans SC", "MS Gothic", "Yu Mincho",
+                 "Apple SD Gothic Neo", sans-serif;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  #norm {
+    position: fixed;
+    bottom: calc(max(20px, env(safe-area-inset-bottom) + 10px));
+    right: calc(max(20px, env(safe-area-inset-right) + 10px));
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 40%, #ffffff, #cccccc);
+    box-shadow: 0 0 12px 3px rgba(255, 255, 255, 0.25),
+                0 0 30px 6px rgba(255, 255, 255, 0.08);
+    z-index: 10;
+    pointer-events: none;
+    animation: pulse 4s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 12px 3px rgba(255, 255, 255, 0.25), 0 0 30px 6px rgba(255, 255, 255, 0.08); }
+    50% { box-shadow: 0 0 16px 5px rgba(255, 255, 255, 0.35), 0 0 40px 10px rgba(255, 255, 255, 0.12); }
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="norm"></div>
+<script src="app.js"></script>
+</body>
+</html>
