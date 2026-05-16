@@ -32,7 +32,7 @@
   const ctx = canvas.getContext('2d');
 
   let W, H, cols, drops, heads, depths;
-  const COL_SPACING = 12;
+  const COL_SPACING = 5;
 
   function resize() {
     W = canvas.width = window.innerWidth;
@@ -208,50 +208,15 @@
     return `rgba(${last.r}, ${last.g}, ${last.b}, ${alpha})`;
   }
 
-  // ── Ripple system ─────────────────────────────────────────────────
-  const RIPPLE = {
-    maxRadius: 120,
-    duration: 40,
-    lineWidth: 2,
-    rings: 3,
+  // ── Void system: "The Stillness Beneath" ─────────────────────────
+  const VOID_CONFIG = {
+    radius: 150,
+    speedFactor: 0.05,
+    trailFactor: 0.1,
   };
-  let ripples = [];
-
-  function addRipple(x, y) {
-    ripples.push({
-      x, y,
-      radius: 0,
-      alpha: 0.7,
-      maxRadius: RIPPLE.maxRadius * (0.8 + Math.random() * 0.4),
-    });
-  }
-
-  function updateRipples() {
-    for (let i = ripples.length - 1; i >= 0; i--) {
-      const r = ripples[i];
-      r.radius += r.maxRadius / RIPPLE.duration;
-      r.alpha -= 0.7 / RIPPLE.duration;
-      if (r.alpha <= 0 || r.radius >= r.maxRadius) {
-        ripples.splice(i, 1);
-      }
-    }
-  }
-
-  function drawRipples(ctx) {
-    const c = currentTheme.colorStops[0].color;
-    for (const r of ripples) {
-      for (let ring = 0; ring < RIPPLE.rings; ring++) {
-        const ringRadius = r.radius - ring * 12;
-        if (ringRadius <= 0) continue;
-        const alpha = r.alpha * (1 - ring / RIPPLE.rings);
-        ctx.beginPath();
-        ctx.arc(r.x, r.y, ringRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
-        ctx.lineWidth = RIPPLE.lineWidth * (1 - ring / RIPPLE.rings * 0.5);
-        ctx.stroke();
-      }
-    }
-  }
+  let voidActive = false;
+  let voidX = 0;
+  let voidY = 0;
 
   // ── Baudrillard overlay ──────────────────────────────────────────
   function createOverlay() {
@@ -404,7 +369,7 @@
     gain.gain.setValueAtTime(volume, startTime + duration - 0.01);
     gain.gain.linearRampToValueAtTime(0, startTime + duration);
     osc.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(audioNodes.voidGain);
     osc.start(startTime);
     osc.stop(startTime + duration + 0.01);
   }
@@ -440,7 +405,7 @@
     gain.gain.linearRampToValueAtTime(DIGITAL.blipVolume, t + 0.008);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
     osc.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(audioNodes.voidGain);
     osc.start(t);
     osc.stop(t + 0.15);
     scheduleBlip();
@@ -510,13 +475,16 @@
     droneGain.connect(dronePan);
     dronePan.connect(master);
 
-    master.connect(audioCtx.destination);
+    const voidGain = audioCtx.createGain();
+    voidGain.gain.value = 1;
+    master.connect(voidGain);
+    voidGain.connect(audioCtx.destination);
 
     drone.start();
     lfo.start();
     noise.start();
 
-    audioNodes = { drone, lfo, noise, master, droneGain, noiseGain, dronePan, lfoGain, noiseFilter, bitCrush };
+    audioNodes = { drone, lfo, noise, master, droneGain, noiseGain, dronePan, lfoGain, noiseFilter, bitCrush, voidGain };
 
     scheduleDialUp();
     scheduleBlip();
@@ -594,8 +562,6 @@
       lastFpsTime = now;
     }
 
-    updateRipples();
-
     ctx.fillStyle = `rgba(${currentTheme.background.r}, ${currentTheme.background.g}, ${currentTheme.background.b}, ${currentTheme.fadeAlpha})`;
     ctx.fillRect(0, 0, W, H);
 
@@ -603,7 +569,11 @@
       const d = depths[i];
       const cfg = depthConfig(d, currentTheme);
 
-      drops[i] += cfg.speed;
+      const colX = i * COL_SPACING;
+      const inVoid = voidActive && Math.hypot(colX - voidX, drops[i] - voidY) < VOID_CONFIG.radius;
+
+      const voidSpeed = inVoid ? cfg.speed * VOID_CONFIG.speedFactor : cfg.speed;
+      drops[i] += voidSpeed;
 
       if (drops[i] > H + cfg.trail * cfg.size) {
         drops[i] = Math.random() * -50;
@@ -611,32 +581,36 @@
         depths[i] = Math.random();
       }
 
-      for (let j = 1; j <= cfg.trail; j++) {
+      const voidTrail = inVoid ? Math.max(1, Math.floor(cfg.trail * VOID_CONFIG.trailFactor)) : cfg.trail;
+      const voidBrightness = inVoid ? 0 : cfg.brightness;
+      const voidGlow = inVoid ? 0 : cfg.glow;
+
+      for (let j = 1; j <= voidTrail; j++) {
         const y = drops[i] - j * cfg.size;
         if (y < 0) continue;
 
-        const trailAlpha = (1 - j / cfg.trail) * cfg.brightness * 0.6;
+        const trailAlpha = (1 - j / voidTrail) * voidBrightness * 0.6;
         ctx.font = `${cfg.size}px "Noto Sans JP", "Hiragino Kaku Gothic Pro", "Yu Gothic", monospace, sans-serif`;
-        ctx.fillStyle = dropColor(d, trailAlpha, currentTheme);
+        ctx.fillStyle = trailAlpha > 0 ? dropColor(d, trailAlpha, currentTheme) : 'rgba(0,0,0,0)';
 
         if (j === 1) {
-          if (cfg.glow > 0.1) {
-            ctx.shadowColor = dropColor(d, cfg.glow, currentTheme);
-            ctx.shadowBlur = currentTheme.glowBlur.trail * cfg.glow;
+          if (voidGlow > 0.1) {
+            ctx.shadowColor = dropColor(d, voidGlow, currentTheme);
+            ctx.shadowBlur = currentTheme.glowBlur.trail * voidGlow;
           }
-          ctx.fillText(pickChar(d), i * COL_SPACING, y);
+          ctx.fillText(pickChar(d), colX, y);
           ctx.shadowBlur = 0;
         } else {
-          ctx.fillText(pickChar(d), i * COL_SPACING, y);
+          ctx.fillText(pickChar(d), colX, y);
         }
       }
 
-      const headAlpha = cfg.brightness;
+      const headAlpha = voidBrightness;
       ctx.font = `${cfg.size}px "Noto Sans JP", "Hiragino Kaku Gothic Pro", "Yu Gothic", monospace, sans-serif`;
-      ctx.shadowColor = dropColor(d, cfg.glow, currentTheme);
-      ctx.shadowBlur = currentTheme.glowBlur.head * cfg.glow;
-      ctx.fillStyle = dropColor(d, headAlpha, currentTheme);
-      ctx.fillText(pickChar(d), i * COL_SPACING, drops[i]);
+      ctx.shadowColor = dropColor(d, voidGlow, currentTheme);
+      ctx.shadowBlur = voidGlow > 0.1 ? currentTheme.glowBlur.head * voidGlow : 0;
+      ctx.fillStyle = headAlpha > 0 ? dropColor(d, headAlpha, currentTheme) : 'rgba(0,0,0,0)';
+      ctx.fillText(pickChar(d), colX, drops[i]);
       ctx.shadowBlur = 0;
 
       if (Math.random() < 0.02) {
@@ -644,14 +618,13 @@
       }
     }
 
-    drawRipples(ctx);
-
     if (showCode) {
       infoEl.innerHTML = [
         `FPS: ${displayFps}`,
         `Cols: ${cols}`,
         `Theme: ${currentTheme.name}`,
         `Audio: ${audioCtx ? audioCtx.state : 'uninit'}`,
+        `Void: ${voidActive}`,
         `Size: ${W}\u00d7${H}`,
         '\u2014',
         '\u300cSimulacra and Simulation\u300d',
@@ -662,7 +635,25 @@
     requestAnimationFrame(render);
   }
 
-  // ── Input ────────────────────────────────────────────────────────
+  // ── Input — The Stillness Beneath ────────────────────────────────
+  function setVoidActive(x, y, active) {
+    if (active) {
+      voidActive = true;
+      voidX = x;
+      voidY = y;
+      if (audioNodes && audioNodes.voidGain) {
+        const t = audioCtx.currentTime;
+        audioNodes.voidGain.gain.linearRampToValueAtTime(0.001, t + 0.15);
+      }
+    } else {
+      voidActive = false;
+      if (audioNodes && audioNodes.voidGain) {
+        const t = audioCtx.currentTime;
+        audioNodes.voidGain.gain.linearRampToValueAtTime(1, t + 0.4);
+      }
+    }
+  }
+
   function getPos(e) {
     const rect = canvas.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -670,17 +661,46 @@
     return { x: clientX - rect.left, y: clientY - rect.top };
   }
 
+  canvas.addEventListener('mousedown', (e) => {
+    initAudio();
+    const p = getPos(e);
+    setVoidActive(p.x, p.y, true);
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (voidActive) {
+      const p = getPos(e);
+      voidX = p.x;
+      voidY = p.y;
+    }
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    setVoidActive(0, 0, false);
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    if (voidActive) setVoidActive(0, 0, false);
+  });
+
   canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
     initAudio();
     const p = getPos(e);
-    addRipple(p.x, p.y);
+    setVoidActive(p.x, p.y, true);
   }, { passive: false });
 
-  canvas.addEventListener('click', (e) => {
-    initAudio();
-    const p = getPos(e);
-    addRipple(p.x, p.y);
+  canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (voidActive) {
+      const p = getPos(e);
+      voidX = p.x;
+      voidY = p.y;
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', () => {
+    setVoidActive(0, 0, false);
   });
 
   // ── Start ────────────────────────────────────────────────────────
