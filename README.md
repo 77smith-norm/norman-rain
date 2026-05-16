@@ -1,5 +1,7 @@
 # 雨 norman-rain
 
+![Norman Rain Logo](norman-rain.png)
+
 > *Simulacra and Simulation* — a generative character rain experience.
 >
 > *The simulacrum is never what hides the truth — it is the truth that hides that there is none.*
