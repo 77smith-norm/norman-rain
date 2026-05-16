@@ -58,9 +58,77 @@
       ],
       glowBlur: { head: 10, trail: 8 },
     },
+    SEPIA: {
+      name: 'Sepia',
+      background: { r: 18, g: 12, b: 6 },
+      fadeAlpha: 0.08,
+      depthRange: {
+        speed:   { min: 0.3, max: 2.0 },
+        size:    { min: 8,   max: 20 },
+        brightness: { min: 0.15, max: 1.0 },
+        glow:    { min: 0,   max: 0.6 },
+        trail:   { min: 0,   max: 15 },
+      },
+      colorStops: [
+        { threshold: 0.7, color: { r: 255, g: 235, b: 200 } },
+        { threshold: 0.4, color: { r: 180, g: 140, b: 90 } },
+        { threshold: 0,   color: { r: 80,  g: 55,  b: 35 } },
+      ],
+      glowBlur: { head: 10, trail: 8 },
+    },
+    MONO: {
+      name: 'Mono',
+      background: { r: 0, g: 0, b: 0 },
+      fadeAlpha: 0.08,
+      depthRange: {
+        speed:   { min: 0.3, max: 2.0 },
+        size:    { min: 8,   max: 20 },
+        brightness: { min: 0.15, max: 1.0 },
+        glow:    { min: 0,   max: 0.6 },
+        trail:   { min: 0,   max: 15 },
+      },
+      colorStops: [
+        { threshold: 0.7, color: { r: 255, g: 255, b: 255 } },
+        { threshold: 0.4, color: { r: 150, g: 150, b: 150 } },
+        { threshold: 0,   color: { r: 60,  g: 60,  b: 60 } },
+      ],
+      glowBlur: { head: 10, trail: 8 },
+    },
   };
 
   let currentTheme = THEMES.DEFAULT;
+  const themeList = [THEMES.DEFAULT, THEMES.SEPIA, THEMES.MONO];
+  let themeIndex = 0;
+
+  const themeBtn = document.createElement('button');
+  themeBtn.textContent = '◉';
+  themeBtn.setAttribute('aria-label', 'Cycle theme');
+  themeBtn.style.cssText = [
+    'position:fixed',
+    'bottom:calc(20px + env(safe-area-inset-bottom,0px))',
+    'left:20px',
+    'width:40px',
+    'height:40px',
+    'border-radius:50%',
+    'border:1px solid rgba(255,255,255,0.3)',
+    'background:rgba(0,0,0,0.5)',
+    'color:rgba(255,255,255,0.8)',
+    'font-size:18px',
+    'cursor:pointer',
+    'z-index:20',
+    'display:flex',
+    'align-items:center',
+    'justify-content:center',
+    'touch-action:manipulation',
+    '-webkit-tap-highlight-color:transparent',
+    'user-select:none',
+  ].join(';');
+  themeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    themeIndex = (themeIndex + 1) % themeList.length;
+    currentTheme = themeList[themeIndex];
+  });
+  document.body.appendChild(themeBtn);
 
   // ── Depth-based config ───────────────────────────────────────────
   function depthConfig(d, theme) {
