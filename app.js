@@ -219,6 +219,147 @@
     }
   }
 
+  // ── Audio system ──────────────────────────────────────────────────
+  const AUDIO = {
+    enabled: true,
+    masterVolume: 0.04,
+    droneFreq: 55,
+    droneVolume: 0.03,
+    noiseVolume: 0.015,
+    noiseFilterFreq: 2000,
+    noiseFilterQ: 1,
+    lfoRate: 0.15,
+    lfoDepth: 0.5,
+  };
+
+  let audioCtx = null;
+  let audioNodes = null;
+  let audioInitialized = false;
+
+  function initAudio() {
+    if (audioInitialized) return;
+    audioInitialized = true;
+
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+
+    const drone = audioCtx.createOscillator();
+    drone.type = 'sine';
+    drone.frequency.value = AUDIO.droneFreq;
+
+    const droneGain = audioCtx.createGain();
+    droneGain.gain.value = AUDIO.droneVolume;
+
+    const dronePan = audioCtx.createStereoPanner();
+    dronePan.pan.value = 0;
+
+    const lfo = audioCtx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = AUDIO.lfoRate;
+    const lfoGain = audioCtx.createGain();
+    lfoGain.gain.value = AUDIO.lfoDepth;
+    lfo.connect(lfoGain);
+    lfoGain.connect(dronePan.pan);
+
+    const noiseLength = audioCtx.sampleRate * 4;
+    const noiseBuffer = audioCtx.createBuffer(1, noiseLength, audioCtx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < noiseLength; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = noiseBuffer;
+    noise.loop = true;
+
+    const noiseFilter = audioCtx.createBiquadFilter();
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.value = AUDIO.noiseFilterFreq;
+    noiseFilter.Q.value = AUDIO.noiseFilterQ;
+
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.value = AUDIO.noiseVolume;
+
+    const master = audioCtx.createGain();
+    master.gain.value = AUDIO.masterVolume;
+
+    drone.connect(droneGain);
+    droneGain.connect(dronePan);
+    dronePan.connect(master);
+
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(master);
+
+    master.connect(audioCtx.destination);
+
+    drone.start();
+    lfo.start();
+    noise.start();
+
+    audioNodes = { drone, lfo, noise, master, droneGain, noiseGain, dronePan, lfoGain, noiseFilter };
+  }
+
+  function startAudio() {
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  function stopAudio() {
+    if (audioCtx && audioCtx.state === 'running') {
+      audioCtx.suspend();
+    }
+  }
+
+  function toggleMute() {
+    if (!audioCtx) return;
+    if (audioCtx.state === 'running') {
+      stopAudio();
+    } else {
+      startAudio();
+    }
+  }
+
+  // Mute toggle button
+  const muteBtn = document.createElement('button');
+  muteBtn.textContent = '♪';
+  muteBtn.setAttribute('aria-label', 'Toggle audio');
+  muteBtn.style.cssText = [
+    'position:fixed',
+    'bottom:calc(20px + env(safe-area-inset-bottom,0px))',
+    'right:20px',
+    'width:40px',
+    'height:40px',
+    'border-radius:50%',
+    'border:1px solid rgba(255,255,255,0.3)',
+    'background:rgba(0,0,0,0.5)',
+    'color:rgba(255,255,255,0.8)',
+    'font-size:18px',
+    'cursor:pointer',
+    'z-index:20',
+    'display:flex',
+    'align-items:center',
+    'justify-content:center',
+    'touch-action:manipulation',
+    '-webkit-tap-highlight-color:transparent',
+    'user-select:none',
+  ].join(';');
+  muteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMute();
+  });
+  document.body.appendChild(muteBtn);
+
+  // Visibility change — suspend audio when tab hidden
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopAudio();
+    } else {
+      startAudio();
+    }
+  });
+
   // ── Render loop ──────────────────────────────────────────────────
   let frame = 0;
 
@@ -293,11 +434,13 @@
 
   canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
+    initAudio();
     const p = getPos(e);
     addRipple(p.x, p.y);
   }, { passive: false });
 
   canvas.addEventListener('click', (e) => {
+    initAudio();
     const p = getPos(e);
     addRipple(p.x, p.y);
   });
