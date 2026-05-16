@@ -1,4 +1,5 @@
 # Features Plan — 2026-05-16
+## Status: COMPLETED — 2026-05-16
 
 ## Overview
 
