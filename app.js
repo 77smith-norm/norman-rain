@@ -649,7 +649,7 @@
       voidActive = false;
       if (audioNodes && audioNodes.voidGain) {
         const t = audioCtx.currentTime;
-        audioNodes.voidGain.gain.linearRampToValueAtTime(1, t + 0.4);
+        audioNodes.voidGain.gain.linearRampToValueAtTime(1, t + 0.15);
       }
     }
   }
@@ -663,6 +663,7 @@
 
   canvas.addEventListener('mousedown', (e) => {
     initAudio();
+    startAudio();
     const p = getPos(e);
     setVoidActive(p.x, p.y, true);
   });
@@ -686,6 +687,7 @@
   canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
     initAudio();
+    startAudio();
     const p = getPos(e);
     setVoidActive(p.x, p.y, true);
   }, { passive: false });
@@ -699,7 +701,14 @@
     }
   }, { passive: false });
 
-  canvas.addEventListener('touchend', () => {
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    initAudio();
+    startAudio();
+    setVoidActive(0, 0, false);
+  }, { passive: false });
+
+  canvas.addEventListener('touchcancel', () => {
     setVoidActive(0, 0, false);
   });
 
