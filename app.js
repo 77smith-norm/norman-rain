@@ -1,186 +1,159 @@
-// ── norman-rain ──
-// Tranquil character rain with depth, sharp glyphs, safe-area support.
+// norman-rain — generative character rain
+// Canvas 2D, 60fps, depth-based rendering
 
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+(() => {
+  'use strict';
 
-// ── Character sets ──
-const CHARSETS = [
-  // CJK — common kanji / hanja / hanzi
-  "的一了是我不在人们有来他这着个到们说去你大为地国口年道我中于心时开始上还都可以新面己后如前所出以及到子比用第高等行手就才年种家也经力工者老早见主产发成性子道做头那同写月方让长本相两您带上花过完月种海打干作向山被声每自意比末及运养土无几三您们年直想度路心话体什快开言条完觉少问生经热晚令其她或秀别再任远只理明夜好怕光很笑写作于称快开言条完觉少问生经热晚令其她或秀别再任远只理明夜好怕光很笑",
-  // Korean hangul
-  "가나다라마바사아자차카타파하거너더러머버서어저처커터퍼허고노도로모보소오초코토포호구누두루무부수우주추쿠투푸후기니디리미비시이치키티피히그느드러머버서어저처커터퍼허",
-  // Greek
-  "αβγδεζηθικλμνξοπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ",
-  // Russian Cyrillic
-  "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ",
-  // Swedish (extra chars beyond basic Latin)
-  "åäöÅÄÖ",
-  // English + symbols
-  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-];
+  // ── Character pools ──────────────────────────────────────────────
+  const CJK = 'の雨に溶ける空の文字が降る森の静けさ風が運ぶ花びら星の光川の流れ山の声雲の影月の明かり朝の露夜の闇桜の咲く道雪の降る夜秋の紅葉冬の雪春の訪れ夏の蝉';
+  const GREEK = 'αβγδεζηθικλμνξοπρστυφχψω';
+  const CYRILLIC = 'абвгдежзийклмнопрстуфхцчшщъыьэюя';
+  const SWEDISH = 'åäö';
+  const LATIN = 'abcdefghijklmnopqrstuvwxyz';
+  const SYMBOLS = '・。、ー，。！？；：？「」『』【】〔〕〈〉《》〈〉';
 
-// Merge into one pool, weighted toward CJK for the Matrix feel
-const CJK = CHARSETS[0] + CHARSETS[1];
-const OTHER = CHARSETS[2] + CHARSETS[3] + CHARSETS[4] + CHARSETS[5];
+  const ALL = CJK + GREEK + CYRILLIC + SWEDISH + LATIN + SYMBOLS;
 
-function pickChar() {
-  // 70% CJK, 30% other
-  return Math.random() < 0.7
-    ? CJK[Math.floor(Math.random() * CJK.length)]
-    : OTHER[Math.floor(Math.random() * OTHER.length)];
-}
+  // ── Canvas setup ─────────────────────────────────────────────────
+  const canvas = document.getElementById('rain');
+  const ctx = canvas.getContext('2d');
 
-// ── Column (drop) ──
-class Drop {
-  constructor(x, colIndex, totalCols, cw, ch) {
-    this.x = x;
-    this.colIndex = colIndex;
-    this.reset(ch, cw);
-    // Stagger initial y so they don't all start at top
-    this.y = Math.random() * ch * 1.5;
-  }
+  let W, H, cols, drops, heads, depths;
 
-  reset(ch, cw) {
-    // Depth factor: 0 = far (slow, dim, small), 1 = near (fast, bright, large)
-    this.depth = Math.pow(Math.random(), 1.5); // bias toward nearer
-    const baseSpeed = 0.4 + this.depth * 1.8;
-    this.speed = baseSpeed * (0.8 + Math.random() * 0.4);
-    this.fontSize = Math.round(10 + this.depth * 12);
-    this.char = pickChar();
-    this.charTimer = 0;
-    this.charInterval = 3 + Math.floor(Math.random() * 8);
-    this.y = -this.fontSize;
-  }
+  function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    cols = Math.floor(W / 16);
+    drops = new Array(cols);
+    heads = new Array(cols);
+    depths = new Array(cols);
 
-  draw(ctx, w, h) {
-    const alpha = 0.15 + this.depth * 0.85;
-    const green = Math.round(140 + this.depth * 115);
-
-    ctx.font = `${this.fontSize}px "Hiragino Kaku Gothic Pro", "Yu Gothic", "Meiryo", "Noto Sans JP", "Noto Sans KR", sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    // Glow layer
-    ctx.shadowColor = `rgba(0, ${green}, 0, ${alpha * 0.6})`;
-    ctx.shadowBlur = 4 + this.depth * 8;
-    ctx.fillStyle = `rgba(0, ${green}, 0, ${alpha})`;
-    ctx.fillText(this.char, this.x, this.y);
-
-    // Reset shadow for performance
-    ctx.shadowBlur = 0;
-
-    // Change character occasionally
-    this.charTimer++;
-    if (this.charTimer >= this.charInterval) {
-      this.charTimer = 0;
-      this.char = pickChar();
+    for (let i = 0; i < cols; i++) {
+      drops[i] = Math.random() * -100;
+      heads[i] = Math.random() * 30;
+      depths[i] = Math.random();
     }
   }
 
-  update(h) {
-    this.y += this.speed;
-    if (this.y > h + this.fontSize * 2) {
-      this.reset(h, canvas.width);
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ── Depth-based config ───────────────────────────────────────────
+  function depthConfig(d) {
+    return {
+      speed: 0.3 + d * 1.7,
+      size: 8 + d * 12,
+      brightness: 0.15 + d * 0.85,
+      glow: d * 0.6,
+      trail: Math.floor(d * 15),
+    };
+  }
+
+  // ── Character selection ──────────────────────────────────────────
+  function pickChar(d) {
+    const r = Math.random();
+    if (d > 0.7) {
+      if (r < 0.7) return CJK[Math.floor(Math.random() * CJK.length)];
+      if (r < 0.85) return GREEK[Math.floor(Math.random() * GREEK.length)];
+      return CYRILLIC[Math.floor(Math.random() * CYRILLIC.length)];
+    } else if (d > 0.4) {
+      if (r < 0.4) return CJK[Math.floor(Math.random() * CJK.length)];
+      if (r < 0.55) return GREEK[Math.floor(Math.random() * GREEK.length)];
+      if (r < 0.7) return CYRILLIC[Math.floor(Math.random() * CYRILLIC.length)];
+      if (r < 0.85) return SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+      return LATIN[Math.floor(Math.random() * LATIN.length)];
+    } else {
+      if (r < 0.3) return SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+      if (r < 0.5) return LATIN[Math.floor(Math.random() * LATIN.length)];
+      if (r < 0.6) return GREEK[Math.floor(Math.random() * GREEK.length)];
+      return CYRILLIC[Math.floor(Math.random() * CYRILLIC.length)];
     }
   }
-}
 
-// ── Head character (bright white-green) ──
-class DropHead extends Drop {
-  draw(ctx) {
-    const alpha = 0.7 + this.depth * 0.3;
-    const green = Math.round(200 + this.depth * 55);
-
-    ctx.font = `bold ${this.fontSize}px "Hiragino Kaku Gothic Pro", "Yu Gothic", "Meiryo", "Noto Sans JP", "Noto Sans KR", sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    ctx.shadowColor = `rgba(180, 255, 180, ${alpha})`;
-    ctx.shadowBlur = 8 + this.depth * 12;
-    ctx.fillStyle = `rgba(${180 + Math.round(this.depth * 75)}, 255, ${160 + Math.round(this.depth * 95)}, ${alpha})`;
-    ctx.fillText(this.char, this.x, this.y);
-    ctx.shadowBlur = 0;
-  }
-}
-
-// ── Init ──
-let drops = [];
-let heads = [];
-let cw = 0;
-let colCount = 0;
-
-function resize() {
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = window.innerWidth * dpr;
-  canvas.height = window.innerHeight * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-  // Column width depends on depth — near columns wider
-  cw = Math.round(14 + (window.devicePixelRatio > 1 ? 2 : 0));
-  colCount = Math.floor(window.innerWidth / cw);
-
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-
-  drops = [];
-  heads = [];
-  for (let i = 0; i < colCount; i++) {
-    const x = i * cw + cw / 2;
-    const drop = new Drop(x, i, colCount, cw, h);
-    drops.push(drop);
-    heads.push(new DropHead(x, i, colCount, cw, h));
-    // Copy depth from parent
-    heads[heads.length - 1].depth = drop.depth;
-    heads[heads.length - 1].speed = drop.speed;
-    heads[heads.length - 1].fontSize = drop.fontSize;
-  }
-}
-
-window.addEventListener("resize", resize);
-resize();
-
-// ── Animation loop ──
-let lastTime = 0;
-const TARGET_INTERVAL = 1000 / 60; // 60 fps
-
-function frame(time) {
-  requestAnimationFrame(frame);
-
-  const delta = time - lastTime;
-  if (delta < TARGET_INTERVAL * 0.7) return; // throttle to ~60fps
-  lastTime = time - (delta % TARGET_INTERVAL);
-
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-
-  // Fade trail
-  ctx.fillStyle = "rgba(8, 12, 8, 0.18)";
-  ctx.fillRect(0, 0, w, h);
-
-  // Update and draw drops (back to front by depth for layering)
-  for (let i = 0; i < drops.length; i++) {
-    drops[i].update(h);
-    drops[i].draw(ctx, w, h);
+  // ── Color palette ────────────────────────────────────────────────
+  function dropColor(d, alpha) {
+    if (d > 0.7) {
+      return `rgba(255, 255, 248, ${alpha})`;
+    } else if (d > 0.4) {
+      return `rgba(180, 210, 255, ${alpha})`;
+    } else {
+      return `rgba(100, 140, 180, ${alpha})`;
+    }
   }
 
-  // Draw heads on top
-  for (let i = 0; i < heads.length; i++) {
-    heads[i].update(h);
-    heads[i].draw(ctx);
-  }
-}
+  // ── Render loop ──────────────────────────────────────────────────
+  let frame = 0;
 
-requestAnimationFrame(frame);
+  function render() {
+    frame++;
 
-// ── Touch: tap to spawn a burst ──
-canvas.addEventListener("touchstart", (e) => {
-  const touch = e.touches[0];
-  const x = touch.clientX;
-  const col = Math.floor(x / cw);
-  if (col >= 0 && col < drops.length) {
-    drops[col].y = -10;
-    drops[col].char = pickChar();
-    heads[col].y = -10;
+    // Fade background
+    ctx.fillStyle = 'rgba(5, 5, 15, 0.08)';
+    ctx.fillRect(0, 0, W, H);
+
+    for (let i = 0; i < cols; i++) {
+      const d = depths[i];
+      const cfg = depthConfig(d);
+
+      drops[i] += cfg.speed;
+
+      if (drops[i] > H + cfg.trail * cfg.size) {
+        drops[i] = Math.random() * -50;
+        heads[i] = Math.random() * 30;
+        depths[i] = Math.random();
+      }
+
+      // Draw trail
+      for (let j = 1; j <= cfg.trail; j++) {
+        const y = drops[i] - j * cfg.size;
+        if (y < 0) continue;
+
+        const trailAlpha = (1 - j / cfg.trail) * cfg.brightness * 0.6;
+        ctx.font = `${cfg.size}px "Noto Sans JP", "Hiragino Kaku Gothic Pro", "Yu Gothic", sans-serif`;
+        ctx.fillStyle = dropColor(d, trailAlpha);
+
+        if (j === 1) {
+          if (cfg.glow > 0.1) {
+            ctx.shadowColor = dropColor(d, cfg.glow);
+            ctx.shadowBlur = 8 * cfg.glow;
+          }
+          ctx.fillText(pickChar(d), i * 16, y);
+          ctx.shadowBlur = 0;
+        } else {
+          ctx.fillText(pickChar(d), i * 16, y);
+        }
+      }
+
+      // Draw head
+      const headAlpha = cfg.brightness;
+      ctx.font = `${cfg.size}px "Noto Sans JP", "Hiragino Kaku Gothic Pro", "Yu Gothic", sans-serif`;
+      ctx.shadowColor = dropColor(d, cfg.glow);
+      ctx.shadowBlur = 10 * cfg.glow;
+      ctx.fillStyle = dropColor(d, headAlpha);
+      ctx.fillText(pickChar(d), i * 16, drops[i]);
+      ctx.shadowBlur = 0;
+
+      if (Math.random() < 0.02) {
+        heads[i] = Math.random() * 30;
+      }
+    }
+
+    requestAnimationFrame(render);
   }
-});
+
+  // ── Tap to reset ─────────────────────────────────────────────────
+  canvas.addEventListener('touchstart', () => {
+    for (let i = 0; i < cols; i++) {
+      drops[i] = Math.random() * -100;
+    }
+  });
+
+  canvas.addEventListener('click', () => {
+    for (let i = 0; i < cols; i++) {
+      drops[i] = Math.random() * -100;
+    }
+  });
+
+  // ── Start ────────────────────────────────────────────────────────
+  render();
+})();
