@@ -174,11 +174,58 @@
     return `rgba(${last.r}, ${last.g}, ${last.b}, ${alpha})`;
   }
 
+  // ── Ripple system ─────────────────────────────────────────────────
+  const RIPPLE = {
+    maxRadius: 120,
+    duration: 40,
+    lineWidth: 2,
+    rings: 3,
+  };
+  let ripples = [];
+
+  function addRipple(x, y) {
+    ripples.push({
+      x, y,
+      radius: 0,
+      alpha: 0.7,
+      maxRadius: RIPPLE.maxRadius * (0.8 + Math.random() * 0.4),
+    });
+  }
+
+  function updateRipples() {
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const r = ripples[i];
+      r.radius += r.maxRadius / RIPPLE.duration;
+      r.alpha -= 0.7 / RIPPLE.duration;
+      if (r.alpha <= 0 || r.radius >= r.maxRadius) {
+        ripples.splice(i, 1);
+      }
+    }
+  }
+
+  function drawRipples(ctx) {
+    const c = currentTheme.colorStops[0].color;
+    for (const r of ripples) {
+      for (let ring = 0; ring < RIPPLE.rings; ring++) {
+        const ringRadius = r.radius - ring * 12;
+        if (ringRadius <= 0) continue;
+        const alpha = r.alpha * (1 - ring / RIPPLE.rings);
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, ringRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
+        ctx.lineWidth = RIPPLE.lineWidth * (1 - ring / RIPPLE.rings * 0.5);
+        ctx.stroke();
+      }
+    }
+  }
+
   // ── Render loop ──────────────────────────────────────────────────
   let frame = 0;
 
   function render() {
     frame++;
+
+    updateRipples();
 
     // Fade background
     ctx.fillStyle = `rgba(${currentTheme.background.r}, ${currentTheme.background.g}, ${currentTheme.background.b}, ${currentTheme.fadeAlpha})`;
@@ -231,20 +278,28 @@
       }
     }
 
+    drawRipples(ctx);
+
     requestAnimationFrame(render);
   }
 
-  // ── Tap to reset ─────────────────────────────────────────────────
-  canvas.addEventListener('touchstart', () => {
-    for (let i = 0; i < cols; i++) {
-      drops[i] = Math.random() * -100;
-    }
-  });
+  // ── Input ────────────────────────────────────────────────────────
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
 
-  canvas.addEventListener('click', () => {
-    for (let i = 0; i < cols; i++) {
-      drops[i] = Math.random() * -100;
-    }
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const p = getPos(e);
+    addRipple(p.x, p.y);
+  }, { passive: false });
+
+  canvas.addEventListener('click', (e) => {
+    const p = getPos(e);
+    addRipple(p.x, p.y);
   });
 
   // ── Start ────────────────────────────────────────────────────────
